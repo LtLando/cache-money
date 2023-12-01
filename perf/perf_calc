@@ -1,0 +1,110 @@
+#! /usr/bin/env python
+import argparse
+import logging
+
+# class CustomFormatter(logging.Formatter):
+
+#     grey = "\x1b[38;20m"
+#     yellow = "\x1b[33;20m"
+#     blue = "\x1b[34;20m"
+#     red = "\x1b[31;20m"
+#     bold_red = "\x1b[31;1m"
+#     reset = "\x1b[0m"
+#     format = "[%(levelname)s] "
+#     msg = "%(message)s"
+
+#     FORMATS = {
+#         logging.DEBUG: grey + format + reset + msg,
+#         logging.INFO: blue + format + reset + msg,
+#         logging.WARNING: yellow + format + reset + msg,
+#         logging.ERROR: red + format + reset + msg,
+#         logging.CRITICAL: bold_red + format + reset + msg
+#     }
+
+#     def format(self, record):
+#         log_fmt = self.FORMATS.get(record.levelno)
+#         formatter = logging.Formatter(log_fmt)
+#         return formatter.format(record)
+
+# logger = logging.getLogger("perf_calc")
+# logger.setLevel(logging.DEBUG)
+# ch = logging.StreamHandler()
+# ch.setLevel(logging.INFO)
+# ch.setFormatter(CustomFormatter())
+# logger.addHandler(ch)
+
+
+# def main():
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("start_time", type=str)
+#     parser.add_argument("end_time", type=str)
+
+#     args = parser.parse_args()
+
+#     start_time: float = float(args.start_time.split(" ")[-1]) 
+#     end_time: float = float(args.end_time.split(" ")[-1])
+
+#     delay = end_time - start_time
+#     if delay <= 0:
+#         logger.error(f"Delay Calculated is Impossible: {delay}... Exiting")
+#         exit(1)
+#     else:
+#         logger.info(f"Coremark Execution Time = {delay} picoseconds")
+
+
+# if __name__ == "__main__":
+#     main()
+
+from jinja2 import Environment, FileSystemLoader
+import subprocess
+
+environment = Environment(loader=FileSystemLoader("./hdl"))
+template = environment.get_template("mp4_template")
+
+# with open("perf.csv", "w") as FILE:
+#     FILE.write("ways,sets,ipc,hit rate,duration\n")
+# with open("cache_performance.md", "w") as FILE:
+#     FILE.write("""
+# | Ways | Sets | Coremark Hit Rate | Coremark IPC | Coremark Duration |
+# | ---- | ---- | ----------------- | ------------ | ----------------- |
+# """)
+
+for ways in [3, 5, 6, 7]:
+    for sets in [16]:
+        content = template.render(
+            num_ways=ways,
+            num_sets=sets
+        )
+
+        with open("hdl/mp4.sv", mode="w", encoding="utf-8") as FILE:
+            FILE.write(content)
+            print(f"[INFO] Wrote mp4.sv w/ params sets={sets} ways={ways}")
+
+        result = subprocess.run(["make", "run_top_tb", "PROG=testcode/competition/coremark_rv32im.elf"])
+
+        print(f"[INFO] Return Code {result.returncode}")
+
+        if result.returncode != 0:
+            continue
+        
+        ipc = None
+        start_time = None
+        end_time = None
+        hit_rate = None
+        with open("sim/simulation.log", "r") as FILE:
+            for line in FILE.readlines():
+                if "IPC" in line:
+                    ipc = float(line.strip().rstrip().split(" ")[-1])
+                if "start time" in line:
+                    start_time = int(line.strip().rstrip().split(" ")[-1])
+                if "stop time" in line:
+                    end_time = int(line.strip().rstrip().split(" ")[-1])
+                if "Hit" in line:
+                    hit_rate = float(line.strip().rstrip().split(" ")[-1])
+        duration = end_time-start_time
+
+        with open("perf.csv", "a") as FILE:
+            FILE.write(f"{ways},{sets},{ipc},{hit_rate},{duration}\n")
+
+        with open("cache_performance.md", "a") as FILE:
+            FILE.write(f"| {ways} | {sets} | {hit_rate} | {ipc} | {duration} |\n")

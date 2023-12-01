@@ -1,0 +1,210 @@
+{# templates/mp4_template #}
+module mp4
+import rv32i_types::*;
+(
+    input   logic           clk,
+    input   logic           rst,
+
+    // Use these for CP1 (magic memory)
+    // output  logic   [31:0]  imem_address,
+    // output  logic           imem_read,
+    // input   logic   [31:0]  imem_rdata,
+    // input   logic           imem_resp,
+    // output  logic   [31:0]  dmem_address,
+    // output  logic           dmem_read,
+    // output  logic           dmem_write,
+    // output  logic   [3:0]   dmem_wmask,
+    // input   logic   [31:0]  dmem_rdata,
+    // output  logic   [31:0]  dmem_wdata,
+    // input   logic           dmem_resp
+
+    // Use these for CP2+ (with caches and burst memory)
+    output  logic   [31:0]  bmem_address,
+    output  logic           bmem_read,
+    output  logic           bmem_write,
+    input   logic   [63:0]  bmem_rdata,
+    output  logic   [63:0]  bmem_wdata,
+    input   logic           bmem_resp
+);
+
+    logic [31:0] imem_address, imem_rdata, dmem_address, dmem_rdata, dmem_wdata, i_pmem_address, dmem_mask256, 
+        d_pmem_address, i_bmem_address, d_bmem_address, imem_address_sync;
+    logic [3:0] dmem_wmask;
+    logic imem_read, imem_resp, dmem_read, dmem_write, dmem_resp, i_pmem_resp, d_pmem_read, d_pmem_write, i_pmem_read,
+        d_pmem_resp, i_bmem_read, d_bmem_read, i_bmem_write, d_bmem_write, i_bmem_resp, d_bmem_resp;
+    logic [255:0] imem_rdata256, i_pmem_rdata, dmem_wdata256, dmem_rdata256, d_pmem_rdata, d_pmem_wdata;
+    logic [63:0] i_bmem_rdata, d_bmem_rdata, i_bmem_wdata, d_bmem_wdata;
+
+    /*--- CPU ---*/
+    CPU cpu(.*);
+
+    /*--- Instruction ---*/
+    bus_adapter i_bus_adapter(
+        .address(imem_address_sync),
+        // .mem_wdata256(256'd0),
+        .mem_rdata256(imem_rdata256),
+        .mem_wdata(32'd0),
+        .mem_rdata(imem_rdata),
+        .mem_byte_enable(4'b0000)
+        // .mem_byte_enable256(32'd0)
+    );
+
+    // cache i_cache(
+    //     .clk(clk),
+    //     .rst(rst),
+    //     // CPU side
+    //     .mem_address(imem_address),
+    //     .mem_read(imem_read),
+    //     .mem_write(1'b0), // never write
+    //     .mem_byte_enable(32'd0),
+    //     .mem_rdata(imem_rdata256),
+    //     .mem_wdata(256'd0),
+    //     .mem_resp(imem_resp),
+
+    //     // Cacheline adapter side
+    //     .pmem_address(i_pmem_address),
+    //     .pmem_read(i_pmem_read),
+    //     .pmem_write(i_pmem_write),
+    //     .pmem_rdata(i_pmem_rdata),
+    //     .pmem_wdata(i_pmem_wdata),
+    //     .pmem_resp(i_pmem_resp)
+    // );
+
+    ff_cache #(.sets({{ num_sets }}), .ways({{ num_ways }})) i_cache
+    (
+        .clk(clk),
+        .rst(rst),
+        // CPU side
+        .mem_address(imem_address),
+        .mem_address_sync(imem_address_sync),
+        .mem_read(imem_read),
+        .mem_rdata(imem_rdata256),
+        .mem_resp(imem_resp),
+
+        // Cacheline adapter side
+        .pmem_address(i_pmem_address),
+        .pmem_read(i_pmem_read),
+        .pmem_rdata(i_pmem_rdata),
+        .pmem_resp(i_pmem_resp)
+    );
+
+    cacheline_adapter i_cacheline_adapter(
+        .clk(clk),
+        .reset_n(~rst),
+
+        // Cache side
+        .line_i('0),
+        .line_o(i_pmem_rdata),
+        .address_i(i_pmem_address),
+        .read_i(i_pmem_read),
+        .write_i('0),
+        .resp_o(i_pmem_resp),
+
+        // Memory side
+        .burst_i(i_bmem_rdata), 
+        .burst_o(i_bmem_wdata),
+        .address_o(i_bmem_address),
+        .read_o(i_bmem_read),
+        .write_o(i_bmem_write),
+        .resp_i(i_bmem_resp)
+    );
+
+    /*--- Data ---*/
+    bus_adapter d_bus_adapter(
+        .address(dmem_address),
+        .mem_wdata256(dmem_wdata256),
+        .mem_rdata256(dmem_rdata256),
+        .mem_wdata(dmem_wdata),
+        .mem_rdata(dmem_rdata),
+        .mem_byte_enable(dmem_wmask),
+        .mem_byte_enable256(dmem_mask256)
+    );
+
+    cache d_cache(
+        .clk(clk),
+        .rst(rst),
+        // CPU side
+        .mem_address(dmem_address),
+        .mem_read(dmem_read),
+        .mem_write(dmem_write),
+        .mem_byte_enable(dmem_mask256),
+        .mem_rdata(dmem_rdata256),
+        .mem_wdata(dmem_wdata256),
+        .mem_resp(dmem_resp),
+
+        // Cacheline adapter side
+        .pmem_address(d_pmem_address),
+        .pmem_read(d_pmem_read),
+        .pmem_write(d_pmem_write),
+        .pmem_rdata(d_pmem_rdata),
+        .pmem_wdata(d_pmem_wdata),
+        .pmem_resp(d_pmem_resp)
+    );       
+
+    cacheline_adapter d_cacheline_adapter(
+        .clk(clk),
+        .reset_n(~rst),
+
+        // Cache side
+        .line_i(d_pmem_wdata),
+        .line_o(d_pmem_rdata),
+        .address_i(d_pmem_address),
+        .read_i(d_pmem_read),
+        .write_i(d_pmem_write),
+        .resp_o(d_pmem_resp),
+
+        // Memory side
+        .burst_i(d_bmem_rdata),
+        .burst_o(d_bmem_wdata),
+        .address_o(d_bmem_address),
+        .read_o(d_bmem_read),
+        .write_o(d_bmem_write),
+        .resp_i(d_bmem_resp)
+    );
+
+    /*--- ARBITER ---*/
+    arbiter arbiter(.*);
+
+    /*--- RVFI ---*/
+    logic           monitor_valid;  // ???
+    logic   [63:0]  monitor_order;  // ???
+    logic   [31:0]  monitor_inst;   // Done
+    logic   [4:0]   monitor_rs1_addr; // Done
+    logic   [4:0]   monitor_rs2_addr; // Done
+    logic   [31:0]  monitor_rs1_rdata; // Done
+    logic   [31:0]  monitor_rs2_rdata; // Done
+    logic   [4:0]   monitor_rd_addr; // Done
+    logic   [31:0]  monitor_rd_wdata; // = writeback_data
+    logic   [31:0]  monitor_pc_rdata; // Done
+    logic   [31:0]  monitor_pc_wdata; // ???
+    logic   [31:0]  monitor_mem_addr; // Done
+    logic   [3:0]   monitor_mem_rmask; // ???
+    logic   [3:0]   monitor_mem_wmask; // Done :: mem_byte_enable in cntrl_sigs
+    logic   [31:0]  monitor_mem_rdata; // Done
+    logic   [31:0]  monitor_mem_wdata; // Done
+
+    rv32i_opcode monitor_opcode;
+    assign monitor_opcode = rv32i_opcode'(monitor_inst[6:0]);
+
+
+    // Fill this out
+    // Only use hierarchical references here for verification
+    // **DO NOT** use hierarchical references in the actual design!
+    assign monitor_valid     = (cpu.mem_wb_reg.cntrl_sigs.valid_rvfi && ~cpu.mem_stall);
+    assign monitor_order     = cpu.counter;
+    assign monitor_inst      = cpu.mem_wb_reg.instruction;
+    assign monitor_rs1_addr  = cpu.mem_wb_reg.rs1_addr;
+    assign monitor_rs2_addr  = cpu.mem_wb_reg.rs2_addr;
+    assign monitor_rs1_rdata = cpu.mem_wb_reg.rs1;
+    assign monitor_rs2_rdata = cpu.mem_wb_reg.rs2;
+    assign monitor_rd_addr   = cpu.mem_wb_reg.rd_addr;
+    assign monitor_rd_wdata  = cpu.writeback_data;
+    assign monitor_pc_rdata  = cpu.mem_wb_reg.pc;
+    assign monitor_pc_wdata  = cpu.mem_wb_reg.pc_wdata;
+    assign monitor_mem_addr  = cpu.mem_wb_reg.mem_addr;
+    assign monitor_mem_rmask = cpu.mem_rmask;
+    assign monitor_mem_wmask = cpu.mem_wb_reg.mem_byte_enable;
+    assign monitor_mem_rdata = cpu.mem_wb_reg.mem_rdata;
+    assign monitor_mem_wdata = cpu.mem_wb_reg.mem_wdata;
+
+endmodule : mp4

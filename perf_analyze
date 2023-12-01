@@ -1,0 +1,25 @@
+#! /usr/bin/env python
+import pandas
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+
+df = pandas.read_csv("perf.csv")
+
+print(df)
+
+X = df["sets"]
+Y = df["ways"]
+
+Z = np.zeros((max(X), max(Y)))
+
+for x in X:
+    for y in Y:
+        Z[x-1][y-1] = df2=df.loc[(df["sets"] == 2) & (df["ways"] == 2)]["hit rate"][0]
+
+X, Y = np.meshgrid(X, Y)
+plt.imshow(Z, cmap='autumn', interpolation='nearest')
+plt.colorbar()
+
+plt.show()

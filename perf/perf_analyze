@@ -1,0 +1,22 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('data.csv')
+
+# Create a 2D heatmap
+heatmap_data = df.pivot(index='sets', columns='ways', values='hit rate')
+plt.imshow(heatmap_data, cmap='hot', interpolation='nearest')
+
+# Set the x and y axis labels
+plt.xlabel('Ways')
+plt.ylabel('Sets')
+
+# Set the x and y axis values
+plt.xticks(ticks=range(len(heatmap_data.columns)), labels=heatmap_data.columns)
+plt.yticks(ticks=range(len(heatmap_data.index)), labels=heatmap_data.index)
+
+# Show the colorbar
+plt.colorbar()
+
+# Show the plot
+plt.savefig("out.png")

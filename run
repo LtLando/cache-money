@@ -1,0 +1,46 @@
+#! /bin/bash
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+IFS='.' read -ra arg_arr <<< "$1"
+IFS='/' read -ra arg_arr2 <<< "${arg_arr[-2]}"
+
+ELF="sim/bin/${arg_arr2[-1]}.elf"
+
+make
+./check_compile_error.sh >/dev/null 2>&1
+if [ $? -eq 1 ]
+then
+    exit 1
+fi
+
+make run_top_tb PROG=$1
+
+if [ $? -eq 1 ]
+then
+    exit 1
+fi
+
+
+./check_sim_error.sh >/dev/null 2>&1
+if [ $? -eq 1 ]
+then
+    exit 1
+fi
+
+spike_out=$(make spike ELF="${ELF}")
+
+diff_out=$(diff sim/spike.log sim/golden_spike.log)
+
+n_diff=${#diff_out}
+
+if [ $n_diff -gt 0 ] 
+then
+    echo "${diff_out}"
+    echo -e "${RED}Spike Mismatch!${NC}"
+    exit 1
+else
+    echo -e "${GREEN}Spike Match${NC}"
+fi

@@ -1,0 +1,32 @@
+#! /bin/bash
+
+counter=0
+passed=0
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+LBLUE='\033[0;34m'
+NC='\033[0m'
+
+search_dir='./testcode/cp1'
+
+make clean >/dev/null 2>&1
+echo -e "${LBLUE}[INFO]${NC} :: Cleaning Directory And Compiling"
+
+
+for i in "$search_dir"/*
+do
+   : 
+   counter=$((counter + 1))
+   ./run $i --no-spike
+   if [ $? -eq 0 ]; then
+      echo -e "${GREEN}[PASSED]${NC} :: $i"
+      passed=$((passed + 1))
+   else
+      echo -e "${RED}[FAILED]${NC} :: $i"
+   fi
+
+done
+
+echo -e "${LBLUE}[INFO]${NC} :: Tests Complete"
+echo "---===--- ($passed/$counter) Tests Passed ---===---"

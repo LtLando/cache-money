@@ -1,0 +1,55 @@
+#! /usr/bin/env python
+
+from jinja2 import Environment, FileSystemLoader
+import subprocess
+
+environment = Environment(loader=FileSystemLoader("./hdl"))
+template = environment.get_template("fetch_template")
+
+with open("perf/branch_perf.csv", "w") as FILE:
+    FILE.write("bits,entries,ipc,hit_rate,duration\n")
+with open("perf/branch_performance.md", "w") as FILE:
+    FILE.write("""
+| Bits | Entries | Coremark Hit Rate | Coremark IPC | Coremark Duration |
+| ---- | ---- | ----------------- | ------------ | ----------------- |
+""")
+
+for bits in range(1,9):
+    for entries in range(1,9):
+        content = template.render(
+            n_bits=bits,
+            n_entries=entries
+        )
+
+        with open("hdl/fetch.sv", mode="w", encoding="utf-8") as FILE:
+            FILE.write(content)
+            print(f"[INFO] Wrote fetch.sv w/ params bits={bits} entries={entries}")
+
+        result = subprocess.run(["make", "run_top_tb", "PROG=testcode/competition/coremark_rv32im.elf"])
+
+        print(f"[INFO] Return Code {result.returncode}")
+
+        if result.returncode != 0:
+            continue
+        
+        ipc = None
+        start_time = None
+        end_time = None
+        hit_rate = None
+        with open("sim/simulation.log", "r") as FILE:
+            for line in FILE.readlines():
+                if "IPC" in line:
+                    ipc = float(line.strip().rstrip().split(" ")[-1])
+                if "start time" in line:
+                    start_time = int(line.strip().rstrip().split(" ")[-1])
+                if "stop time" in line:
+                    end_time = int(line.strip().rstrip().split(" ")[-1])
+                if "Hit" in line:
+                    hit_rate = float(line.strip().rstrip().split(" ")[-1])
+        duration = end_time-start_time
+
+        with open("perf/branch_perf.csv", "a") as FILE:
+            FILE.write(f"{bits},{entries},{ipc},{hit_rate},{duration}\n")
+
+        with open("perf/branch_performance.md", "a") as FILE:
+            FILE.write(f"| {bits} | {entries} | {hit_rate} | {ipc} | {duration} |\n")
